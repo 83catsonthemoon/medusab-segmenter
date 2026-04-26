@@ -141,11 +141,18 @@ jobs:
           appdir="${GITHUB_WORKSPACE}/AppDir"
           rm -rf "${appdir}"
           cmake --install build --prefix "${appdir}/usr"
+
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+
+          icon_file="${appdir}/usr/share/icons/hicolor/512x512/apps/medusab-segmenter.png"
+          magick "${icon_file}" -resize 512x512! "${icon_file}"
+          identify "${icon_file}"
+
           qmake_path="$(command -v qmake6 || command -v qmake)"
           desktop_dir="${appdir}/usr/share/applications"
           desktop_file="${desktop_dir}/medusab-segmenter.desktop"
-          icon_file="${appdir}/usr/share/icons/hicolor/512x512/apps/"
-          icon_file+="medusab-segmenter.png"
+
           export QMAKE="${qmake_path}"
           "${RUNNER_TEMP}/linuxdeploy/linuxdeploy-x86_64.AppImage" \
             --appdir "${appdir}" \
@@ -153,6 +160,7 @@ jobs:
             --icon-file "${icon_file}" \
             --plugin qt \
             --output appimage
+
           mkdir -p dist/linux
           mv ./*.AppImage dist/linux/
 
