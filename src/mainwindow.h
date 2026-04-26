@@ -6,10 +6,10 @@
 #include <QComboBox>
 #include <QCheckBox>
 #include <QPushButton>
-#include <onnxruntime_cxx_api.h>
 
 #include <memory>
 
+#include "ortcompat.h"
 #include "segmentationsession.h"
 
 class MainWindow : public QMainWindow {

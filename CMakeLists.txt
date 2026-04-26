@@ -11,6 +11,22 @@ include(GNUInstallDirs)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 
+if(WIN32)
+    set(WINDOWS_ML_DIR "" CACHE PATH "Path to Microsoft.WindowsAppSDK.ML/build/cmake")
+    if(WINDOWS_ML_DIR)
+        list(PREPEND CMAKE_PREFIX_PATH "${WINDOWS_ML_DIR}")
+    endif()
+    find_package(microsoft.windows.ai.machinelearning CONFIG REQUIRED)
+else()
+    set(ONNXRUNTIME_ROOT "" CACHE PATH "./onnxruntime-linux-x64-gpu-1.25.0/")
+
+    add_library(onnxruntime SHARED IMPORTED)
+    set_target_properties(onnxruntime PROPERTIES
+        IMPORTED_LOCATION "${ONNXRUNTIME_ROOT}/lib/libonnxruntime.so"
+        INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_ROOT}/include"
+    )
+endif()
+
 set(BUILD_LIST core,imgproc CACHE STRING "OpenCV modules to build" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "Disable OpenCV tests" FORCE)
 set(BUILD_PERF_TESTS OFF CACHE BOOL "Disable OpenCV performance tests" FORCE)
@@ -34,23 +50,6 @@ set(WITH_OPENEXR OFF CACHE BOOL "Disable OpenCV OpenEXR support" FORCE)
 set(BUILD_OPENEXR OFF CACHE BOOL "Disable bundled OpenEXR" FORCE)
 add_subdirectory(opencv EXCLUDE_FROM_ALL)
 
-set(ONNXRUNTIME_ROOT "" CACHE PATH "./onnxruntime-linux-x64-gpu-1.25.0/")
-
-add_library(onnxruntime SHARED IMPORTED)
-
-if(WIN32)
-    set_target_properties(onnxruntime PROPERTIES
-        IMPORTED_IMPLIB "${ONNXRUNTIME_ROOT}/lib/onnxruntime.lib"
-        IMPORTED_LOCATION "${ONNXRUNTIME_ROOT}/lib/onnxruntime.dll"
-        INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_ROOT}/include"
-    )
-else()
-    set_target_properties(onnxruntime PROPERTIES
-        IMPORTED_LOCATION "${ONNXRUNTIME_ROOT}/lib/libonnxruntime.so"
-        INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_ROOT}/include"
-    )
-endif()
-
 if (MSVC)
     # warning level 4
     add_compile_options(/W4 /Qpar /GF /favor:blend /arch:AVX2)
@@ -69,7 +68,12 @@ qt_add_executable(medusab-segmenter
     src/segmentationsession.h
 )
 
-target_link_libraries(medusab-segmenter PRIVATE Qt6::Widgets Qt6::Network onnxruntime)
+target_link_libraries(medusab-segmenter PRIVATE Qt6::Widgets Qt6::Network)
+if(WIN32)
+    target_link_libraries(medusab-segmenter PRIVATE WindowsML::Api WindowsML::OnnxRuntime)
+else()
+    target_link_libraries(medusab-segmenter PRIVATE onnxruntime)
+endif()
 target_include_directories(medusab-segmenter PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/opencv/include"
@@ -95,8 +99,15 @@ install(TARGETS medusab-segmenter opencv_core opencv_imgproc
 )
 
 if(WIN32)
-    file(GLOB ONNXRUNTIME_RUNTIME_FILES "${ONNXRUNTIME_ROOT}/lib/*.dll")
-    install(FILES ${ONNXRUNTIME_RUNTIME_FILES} DESTINATION ${CMAKE_INSTALL_BINDIR})
+    add_custom_command(TARGET medusab-segmenter POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_RUNTIME_DLLS:medusab-segmenter> $<TARGET_FILE_DIR:medusab-segmenter>
+        COMMAND_EXPAND_LISTS
+        VERBATIM
+    )
+    install(IMPORTED_RUNTIME_ARTIFACTS WindowsML::Api WindowsML::OnnxRuntime
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
 else()
     file(GLOB ONNXRUNTIME_RUNTIME_FILES "${ONNXRUNTIME_ROOT}/lib/libonnxruntime*.so*")
     install(FILES ${ONNXRUNTIME_RUNTIME_FILES} DESTINATION ${CMAKE_INSTALL_LIBDIR})
@@ -117,7 +128,7 @@ endif()
 if(WIN32)
     qt_generate_deploy_app_script(
         TARGET medusab-segmenter
-        FILENAME_VARIABLE qt_deploy_script
+        OUTPUT_SCRIPT qt_deploy_script
         NO_UNSUPPORTED_PLATFORM_ERROR
     )
     install(SCRIPT ${qt_deploy_script})
@@ -134,9 +145,10 @@ set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 
 if(WIN32)
     set(CPACK_GENERATOR "ZIP;NSIS")
+    set(CPACK_PACKAGE_EXECUTABLES "medusab-segmenter" "Medusab Segmenter")
+    set(CPACK_CREATE_DESKTOP_LINKS "medusab-segmenter")
     set(CPACK_NSIS_DISPLAY_NAME "Medusab Segmenter")
     set(CPACK_NSIS_PACKAGE_NAME "Medusab Segmenter")
-    set(CPACK_NSIS_CREATE_DESKTOP_LINKS "medusab-segmenter")
     set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
       Delete '$DESKTOP\\\\Medusab Segmenter.lnk'
     ")

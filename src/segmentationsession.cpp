@@ -160,6 +160,9 @@ std::string joinProviders(const std::set<std::string> &providers) {
 }
 
 bool appendDirectMLProvider(Ort::SessionOptions *opts) {
+  opts->DisableMemPattern();
+  opts->SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+
   try {
     Ort::ThrowOnError(Ort::GetApi().SessionOptionsAppendExecutionProvider(
         *opts, "DmlExecutionProvider", nullptr, nullptr, 0));
@@ -181,7 +184,7 @@ bool appendDirectMLProvider(Ort::SessionOptions *opts) {
 
 Ort::SessionOptions makeSessionOptions(bool allowGpu) {
   Ort::SessionOptions opts;
-  opts.SetIntraOpNumThreads(1);
+  opts.SetIntraOpNumThreads(4);
   opts.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
 
   std::vector<std::string> availableProviders = Ort::GetAvailableProviders();
@@ -215,6 +218,12 @@ Ort::SessionOptions makeSessionOptions(bool allowGpu) {
       qDebug() << "Using ONNX Runtime provider: DmlExecutionProvider";
       return opts;
     }
+  }
+
+  if (allowGpu) {
+    qWarning() << "GPU execution was requested, but no GPU provider could be"
+                  " enabled. Falling back to CPU. Available providers:"
+               << QString::fromStdString(joinProviders(sortedProviders));
   }
 
   qDebug() << "Using ONNX Runtime provider: CPUExecutionProvider";
@@ -694,6 +703,18 @@ private:
 };
 
 } // namespace
+
+Ort::Env createOrtEnv(
+    const std::function<void(const QString &)> &statusCallback) {
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "medusab-segmenter");
+#ifdef _WIN32
+  if (statusCallback)
+    statusCallback(QString("Loading Windows ML runtime..."));
+#else
+  Q_UNUSED(statusCallback);
+#endif
+  return env;
+}
 
 std::unique_ptr<SegmentationSession> createSegmentationSession(
     ModelKind kind, Ort::Env &env, bool allowGpu,
