@@ -48,13 +48,10 @@ jobs:
             libgl1-mesa-dev \
             libxkbcommon-x11-dev \
             ninja-build \
-            patchelf
-
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          arch: linux_gcc_64
+            patchelf \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            qt6-svg-dev
 
       - name: Download ONNX Runtime
         run: |
