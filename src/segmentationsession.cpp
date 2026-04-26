@@ -184,7 +184,7 @@ bool appendDirectMLProvider(Ort::SessionOptions *opts) {
 
 Ort::SessionOptions makeSessionOptions(bool allowGpu) {
   Ort::SessionOptions opts;
-  opts.SetIntraOpNumThreads(1);
+  opts.SetIntraOpNumThreads(4);
   opts.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
 
   std::vector<std::string> availableProviders = Ort::GetAvailableProviders();
