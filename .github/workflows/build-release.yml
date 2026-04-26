@@ -1,0 +1,255 @@
+---
+name: Build And Publish
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  QT_VERSION: 6.8.3
+  ORT_VERSION: 1.25.0
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set build version
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> "${GITHUB_ENV}"
+          else
+            echo "APP_VERSION=0.0.0.${GITHUB_RUN_NUMBER}" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            curl \
+            dpkg-dev \
+            file \
+            libfontconfig1-dev \
+            libfuse2 \
+            libgl1-mesa-dev \
+            libxkbcommon-x11-dev \
+            ninja-build \
+            patchelf
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: linux_gcc_64
+
+      - name: Download ONNX Runtime
+        run: |
+          archive_path="${RUNNER_TEMP}/onnxruntime.tgz"
+          archive_url="https://github.com/microsoft/onnxruntime/releases/"
+          archive_url+="download/v${ORT_VERSION}/"
+          archive_url+="onnxruntime-linux-x64-${ORT_VERSION}.tgz"
+          curl -L -o "${archive_path}" "${archive_url}"
+          tar -xzf "${archive_path}" -C "${RUNNER_TEMP}"
+          ort_root="${RUNNER_TEMP}/onnxruntime-linux-x64-${ORT_VERSION}"
+          echo "ONNXRUNTIME_ROOT=${ort_root}" >> "${GITHUB_ENV}"
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMEDUSAB_SEGMENTER_VERSION="${APP_VERSION}" \
+            -DONNXRUNTIME_ROOT="${ONNXRUNTIME_ROOT}"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Package TGZ
+        working-directory: build
+        run: |
+          cpack -G TGZ -B "${GITHUB_WORKSPACE}/dist/linux"
+
+      - name: Package DEB
+        run: |
+          pkg_root="${RUNNER_TEMP}/deb-root"
+          control_dir="${pkg_root}/DEBIAN"
+          deb_path="${GITHUB_WORKSPACE}/dist/linux/"
+          deb_path+="medusab-segmenter_${APP_VERSION}_amd64.deb"
+          maintainer_name="83catsonthemoon"
+          maintainer_mail="83catsonthemoon@users.noreply.github.com"
+          install -d "${control_dir}"
+          DESTDIR="${pkg_root}" cmake --install build --prefix /usr
+          printf '%s\n' \
+            'Package: medusab-segmenter' \
+            "Version: ${APP_VERSION}" \
+            'Section: graphics' \
+            'Priority: optional' \
+            'Architecture: amd64' \
+            "Maintainer: ${maintainer_name} <${maintainer_mail}>" \
+            'Description: Desktop image segmentation app powered by Qt' \
+            ' and ONNX Runtime' \
+            > "${control_dir}/control"
+          mkdir -p "${GITHUB_WORKSPACE}/dist/linux"
+          dpkg-deb -Zgzip --build --root-owner-group \
+            "${pkg_root}" \
+            "${deb_path}"
+
+      - name: Download linuxdeploy
+        run: |
+          linuxdeploy_dir="${RUNNER_TEMP}/linuxdeploy"
+          linuxdeploy_url="https://github.com/linuxdeploy/linuxdeploy/"
+          linuxdeploy_url+="releases/download/continuous/"
+          linuxdeploy_url+="linuxdeploy-x86_64.AppImage"
+          qt_plugin_url="https://github.com/linuxdeploy/linuxdeploy-plugin-qt/"
+          qt_plugin_url+="releases/download/continuous/"
+          qt_plugin_url+="linuxdeploy-plugin-qt-x86_64.AppImage"
+          mkdir -p "${linuxdeploy_dir}"
+          curl -L \
+            -o "${linuxdeploy_dir}/linuxdeploy-x86_64.AppImage" \
+            "${linuxdeploy_url}"
+          curl -L \
+            -o "${linuxdeploy_dir}/linuxdeploy-plugin-qt-x86_64.AppImage" \
+            "${qt_plugin_url}"
+          chmod +x "${linuxdeploy_dir}/"*.AppImage
+      
+      - name: Resize AppIcon to 512x512
+        run: |
+          icon_path="build/share/icons/hicolor/512x512/apps/medusab-segmenter.png"
+          if [ -f "$icon_path" ]; then
+            sudo apt-get update
+            sudo apt-get install -y imagemagick
+            mogrify -resize 512x512! "$icon_path"
+          fi
+
+      - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: |
+          appdir="${GITHUB_WORKSPACE}/AppDir"
+          rm -rf "${appdir}"
+          cmake --install build --prefix "${appdir}/usr"
+
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+
+          icon_file="${appdir}/usr/share/icons/hicolor/512x512/apps/medusab-segmenter.png"
+          convert "${icon_file}" -resize 512x512! "${icon_file}"
+          identify "${icon_file}"
+
+          qmake_path="$(command -v qmake6 || command -v qmake)"
+          desktop_dir="${appdir}/usr/share/applications"
+          desktop_file="${desktop_dir}/medusab-segmenter.desktop"
+
+          export QMAKE="${qmake_path}"
+          "${RUNNER_TEMP}/linuxdeploy/linuxdeploy-x86_64.AppImage" \
+            --appdir "${appdir}" \
+            --desktop-file "${desktop_file}" \
+            --icon-file "${icon_file}" \
+            --plugin qt \
+            --output appimage
+
+          mkdir -p dist/linux
+          mv ./*.AppImage dist/linux/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: medusab-segmenter-linux
+          path: dist/linux/*
+
+      - name: Publish release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/linux/*
+
+  windows:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set build version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq "tag") {
+            $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          } else {
+            $version = "0.0.0.$env:GITHUB_RUN_NUMBER"
+          }
+          "APP_VERSION=$version" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install packaging tools
+        shell: pwsh
+        run: choco install nsis -y
+
+      - name: Download ONNX Runtime
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "onnxruntime.zip"
+          $root = Join-Path `
+            $env:RUNNER_TEMP `
+            "onnxruntime-win-x64-gpu-$env:ORT_VERSION"
+          $url = "https://github.com/microsoft/onnxruntime/releases/download/" +
+            "v$($env:ORT_VERSION)/" +
+            "onnxruntime-win-x64-gpu-$($env:ORT_VERSION).zip"
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $env:RUNNER_TEMP -Force
+          "ONNXRUNTIME_ROOT=$root" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DMEDUSAB_SEGMENTER_VERSION="${env:APP_VERSION}" `
+            -DONNXRUNTIME_ROOT="${env:ONNXRUNTIME_ROOT}"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Package ZIP and NSIS installer
+        working-directory: build
+        shell: pwsh
+        run: |
+          New-Item `
+            -ItemType Directory `
+            -Path "$env:GITHUB_WORKSPACE/dist/windows" `
+            -Force | Out-Null
+          cpack -C Release -G ZIP -B "$env:GITHUB_WORKSPACE/dist/windows"
+          cpack -C Release -G NSIS -B "$env:GITHUB_WORKSPACE/dist/windows"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: medusab-segmenter-windows
+          path: dist/windows/*
+
+      - name: Publish release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/windows/*

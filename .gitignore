@@ -67,3 +67,11 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+*.tgz
+*.zip
+onnxruntime-*
+
+# IDE files
+.vscode/
+.idea/
