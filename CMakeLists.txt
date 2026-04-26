@@ -71,6 +71,7 @@ qt_add_executable(medusab-segmenter
 
 target_link_libraries(medusab-segmenter PRIVATE Qt6::Widgets Qt6::Network onnxruntime)
 target_include_directories(medusab-segmenter PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/opencv/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/opencv/modules/core/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/opencv/modules/imgproc/include"
