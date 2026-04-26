@@ -43,6 +43,7 @@ jobs:
             curl \
             dpkg-dev \
             file \
+            imagemagick \
             libfontconfig1-dev \
             libfuse2 \
             libgl1-mesa-dev \
@@ -58,10 +59,10 @@ jobs:
           archive_path="${RUNNER_TEMP}/onnxruntime.tgz"
           archive_url="https://github.com/microsoft/onnxruntime/releases/"
           archive_url+="download/v${ORT_VERSION}/"
-          archive_url+="onnxruntime-linux-x64-${ORT_VERSION}.tgz"
+          archive_url+="onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz"
           curl -L -o "${archive_path}" "${archive_url}"
           tar -xzf "${archive_path}" -C "${RUNNER_TEMP}"
-          ort_root="${RUNNER_TEMP}/onnxruntime-linux-x64-${ORT_VERSION}"
+          ort_root="${RUNNER_TEMP}/onnxruntime-linux-x64-gpu-${ORT_VERSION}"
           echo "ONNXRUNTIME_ROOT=${ort_root}" >> "${GITHUB_ENV}"
 
       - name: Configure
@@ -122,34 +123,22 @@ jobs:
             "${qt_plugin_url}"
           chmod +x "${linuxdeploy_dir}/"*.AppImage
       
-      - name: Resize AppIcon to 512x512
-        run: |
-          icon_path="build/share/icons/hicolor/512x512/apps/medusab-segmenter.png"
-          if [ -f "$icon_path" ]; then
-            sudo apt-get update
-            sudo apt-get install -y imagemagick
-            mogrify -resize 512x512! "$icon_path"
-          fi
-
       - name: Build AppImage
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
           appdir="${GITHUB_WORKSPACE}/AppDir"
+          lib_dir="${appdir}/usr/lib"
+          icon_file="${appdir}/usr/share/icons/hicolor/512x512/apps/"
+          icon_file+="medusab-segmenter.png"
           rm -rf "${appdir}"
           cmake --install build --prefix "${appdir}/usr"
-
-          sudo apt-get update
-          sudo apt-get install -y imagemagick
-
-          icon_file="${appdir}/usr/share/icons/hicolor/512x512/apps/medusab-segmenter.png"
+          rm -f "${lib_dir}/libonnxruntime_providers_cuda.so"*
+          rm -f "${lib_dir}/libonnxruntime_providers_tensorrt.so"*
           convert "${icon_file}" -resize 512x512! "${icon_file}"
-          identify "${icon_file}"
-
           qmake_path="$(command -v qmake6 || command -v qmake)"
           desktop_dir="${appdir}/usr/share/applications"
           desktop_file="${desktop_dir}/medusab-segmenter.desktop"
-
           export QMAKE="${qmake_path}"
           "${RUNNER_TEMP}/linuxdeploy/linuxdeploy-x86_64.AppImage" \
             --appdir "${appdir}" \
@@ -157,7 +146,6 @@ jobs:
             --icon-file "${icon_file}" \
             --plugin qt \
             --output appimage
-
           mkdir -p dist/linux
           mv ./*.AppImage dist/linux/
 
