@@ -15,9 +15,10 @@ Linux:
 build-essential cmake ninja-build qt6-base-dev
 ```
 
-Windows:
-
-MSVC + cmake + ninja-build + Windows equivalent for QT?
+Windows
+```ps
+choco install qt6-base-dev
+```
 
 ONNX Runtime:
 
@@ -39,9 +40,27 @@ For Windows, go download the dev kit as linked in the ONNX documentation.
 
 ### Build
 
+#### Linux
+
 ```bash
 cmake -S . -B build -DONNXRUNTIME_ROOT=onnxruntime-linux-x64-gpu-1.25.0
 cmake --build build
 ```
 
-### 
+#### Windows 
+
+MinGW
+```ps
+cmake -S . -B build -G "MinGW Makefiles" `
+   -DCMAKE_C_COMPILER=gcc `
+   -DCMAKE_CXX_COMPILER=g++ `
+   -DCMAKE_PREFIX_PATH="C:/Qt/6.4.2/mingw_64" `
+   -DONNXRUNTIME_ROOT="onnxruntime-win-x64-gpu-1.25.0"
+```
+
+Maybe MSVC
+```ps
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+  -DCMAKE_PREFIX_PATH="C:/Qt/6.4.2/msvc2019_64" `
+  -DONNXRUNTIME_ROOT="onnxruntime-win-x64-gpu-1.25.0"
+```
