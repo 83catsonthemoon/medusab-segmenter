@@ -109,12 +109,14 @@ if(UNIX AND NOT APPLE)
     )
 endif()
 
-qt_generate_deploy_app_script(
-    TARGET medusab-segmenter
-    FILENAME_VARIABLE qt_deploy_script
-    NO_UNSUPPORTED_PLATFORM_ERROR
-)
-install(SCRIPT ${qt_deploy_script})
+if(WIN32)
+    qt_generate_deploy_app_script(
+        TARGET medusab-segmenter
+        FILENAME_VARIABLE qt_deploy_script
+        NO_UNSUPPORTED_PLATFORM_ERROR
+    )
+    install(SCRIPT ${qt_deploy_script})
+endif()
 
 set(CPACK_PACKAGE_NAME "medusab-segmenter")
 set(CPACK_PACKAGE_VENDOR "83catsonthemoon")

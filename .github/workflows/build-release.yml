@@ -129,15 +129,17 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
-          rm -rf AppDir
-          cmake --install build --prefix AppDir/usr
+          appdir="${GITHUB_WORKSPACE}/AppDir"
+          rm -rf "${appdir}"
+          cmake --install build --prefix "${appdir}/usr"
           qmake_path="$(command -v qmake6 || command -v qmake)"
-          desktop_file="AppDir/usr/share/applications/medusab-segmenter.desktop"
-          icon_file="AppDir/usr/share/icons/hicolor/512x512/apps/"
+          desktop_dir="${appdir}/usr/share/applications"
+          desktop_file="${desktop_dir}/medusab-segmenter.desktop"
+          icon_file="${appdir}/usr/share/icons/hicolor/512x512/apps/"
           icon_file+="medusab-segmenter.png"
           export QMAKE="${qmake_path}"
           "${RUNNER_TEMP}/linuxdeploy/linuxdeploy-x86_64.AppImage" \
-            --appdir AppDir \
+            --appdir "${appdir}" \
             --desktop-file "${desktop_file}" \
             --icon-file "${icon_file}" \
             --plugin qt \
@@ -194,11 +196,9 @@ jobs:
           $root = Join-Path `
             $env:RUNNER_TEMP `
             "onnxruntime-win-x64-directml-$env:ORT_VERSION"
-          $url = @(
-            "https://github.com/microsoft/onnxruntime/releases/download/"
-            + "v$env:ORT_VERSION/"
-            + "onnxruntime-win-x64-directml-$env:ORT_VERSION.zip"
-          ) -join ""
+          $url = "https://github.com/microsoft/onnxruntime/releases/download/" +
+            "v$($env:ORT_VERSION)/" +
+            "onnxruntime-win-x64-directml-$($env:ORT_VERSION).zip"
           Invoke-WebRequest -Uri $url -OutFile $archive
           Expand-Archive -Path $archive -DestinationPath $env:RUNNER_TEMP -Force
           "ONNXRUNTIME_ROOT=$root" |
