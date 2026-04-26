@@ -268,6 +268,7 @@ void MainWindow::runCurrentModel() {
         currentOutputImage = segmentationSession->predictMask(currentInputImage);
 
         if (hurtComputerCheckBox->isChecked()) {
+            segmentationSession.reset();
             updateButtonStates();
             updateImageLabels();
             ensureChunkRefinementSession();
