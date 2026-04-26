@@ -200,7 +200,7 @@ jobs:
             "onnxruntime-win-x64-gpu-$env:ORT_VERSION"
           $url = "https://github.com/microsoft/onnxruntime/releases/download/" +
             "v$($env:ORT_VERSION)/" +
-            "onnxruntime-win-x64-gpu-$($env:ORT_VERSION).zip"
+            "onnxruntime-win-x64-gpu_cuda13-$($env:ORT_VERSION).zip"
           Invoke-WebRequest -Uri $url -OutFile $archive
           Expand-Archive -Path $archive -DestinationPath $env:RUNNER_TEMP -Force
           "ONNXRUNTIME_ROOT=$root" |
