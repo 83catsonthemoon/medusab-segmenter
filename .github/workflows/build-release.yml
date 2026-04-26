@@ -16,6 +16,7 @@ permissions:
 env:
   QT_VERSION: 6.8.3
   ORT_VERSION: 1.25.0
+  WINDOWS_ML_VERSION: 1.8.2141
 
 jobs:
   linux:
@@ -189,20 +190,17 @@ jobs:
 
       - name: Install packaging tools
         shell: pwsh
-        run: choco install nsis -y
+        run: choco install nsis nuget.commandline -y
 
-      - name: Download Windows ML package
+      - name: Restore Windows ML package
         shell: pwsh
         run: |
-          $version = "1.8.2141"
-          $archive = Join-Path $env:RUNNER_TEMP "Microsoft.WindowsAppSDK.ML.$version.nupkg"
-          $root = Join-Path `
-            $env:RUNNER_TEMP `
-            "Microsoft.WindowsAppSDK.ML.$version"
-          $url = "https://www.nuget.org/api/v2/package/" +
-            "Microsoft.WindowsAppSDK.ML/$version"
-          Invoke-WebRequest -Uri $url -OutFile $archive
-          Expand-Archive -Path $archive -DestinationPath $env:RUNNER_TEMP -Force
+          $packagesDir = Join-Path $env:RUNNER_TEMP "nuget-packages"
+          nuget install Microsoft.WindowsAppSDK.ML `
+            -Version $env:WINDOWS_ML_VERSION `
+            -OutputDirectory $packagesDir `
+            -ExcludeVersion
+          $root = Join-Path $packagesDir "Microsoft.WindowsAppSDK.ML"
           "WINDOWS_ML_DIR=$(Join-Path $root 'build/cmake')" |
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
