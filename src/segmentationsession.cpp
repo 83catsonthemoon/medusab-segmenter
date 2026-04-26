@@ -160,6 +160,9 @@ std::string joinProviders(const std::set<std::string> &providers) {
 }
 
 bool appendDirectMLProvider(Ort::SessionOptions *opts) {
+  opts->DisableMemPattern();
+  opts->SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+
   try {
     Ort::ThrowOnError(Ort::GetApi().SessionOptionsAppendExecutionProvider(
         *opts, "DmlExecutionProvider", nullptr, nullptr, 0));
@@ -215,6 +218,12 @@ Ort::SessionOptions makeSessionOptions(bool allowGpu) {
       qDebug() << "Using ONNX Runtime provider: DmlExecutionProvider";
       return opts;
     }
+  }
+
+  if (allowGpu) {
+    qWarning() << "GPU execution was requested, but no GPU provider could be"
+                  " enabled. Falling back to CPU. Available providers:"
+               << QString::fromStdString(joinProviders(sortedProviders));
   }
 
   qDebug() << "Using ONNX Runtime provider: CPUExecutionProvider";

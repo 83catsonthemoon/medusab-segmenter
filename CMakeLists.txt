@@ -134,9 +134,10 @@ set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 
 if(WIN32)
     set(CPACK_GENERATOR "ZIP;NSIS")
+    set(CPACK_PACKAGE_EXECUTABLES "medusab-segmenter" "Medusab Segmenter")
+    set(CPACK_CREATE_DESKTOP_LINKS "medusab-segmenter")
     set(CPACK_NSIS_DISPLAY_NAME "Medusab Segmenter")
     set(CPACK_NSIS_PACKAGE_NAME "Medusab Segmenter")
-    set(CPACK_NSIS_CREATE_DESKTOP_LINKS "medusab-segmenter")
     set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
       Delete '$DESKTOP\\\\Medusab Segmenter.lnk'
     ")

@@ -38,6 +38,16 @@ sudo ldconfig
 
 For Windows, go download the dev kit as linked in the ONNX documentation.
 
+The Windows GPU zip alone is not enough for CUDA execution. ONNX Runtime's
+CUDA EP also needs matching CUDA and cuDNN runtime DLLs available at runtime.
+If `Ort::GetAvailableProviders()` only shows `CPUExecutionProvider` on
+Windows, the usual cause is missing or mismatched CUDA/cuDNN/MSVC runtime DLLs
+rather than a problem in the model itself.
+
+If CUDA is unavailable on Windows, this app will try DirectML next. ONNX
+Runtime's DirectML EP runs on adapter `0` by default, which is often the
+integrated GPU on mixed-GPU laptops and desktops.
+
 ### Build
 
 #### Linux
