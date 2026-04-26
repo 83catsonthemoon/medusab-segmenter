@@ -124,6 +124,15 @@ jobs:
             -o "${linuxdeploy_dir}/linuxdeploy-plugin-qt-x86_64.AppImage" \
             "${qt_plugin_url}"
           chmod +x "${linuxdeploy_dir}/"*.AppImage
+      
+      - name: Resize AppIcon to 512x512
+        run: |
+          icon_path="build/share/icons/hicolor/512x512/apps/medusab-segmenter.png"
+          if [ -f "$icon_path" ]; then
+            sudo apt-get update
+            sudo apt-get install -y imagemagick
+            mogrify -resize 512x512! "$icon_path"
+          fi
 
       - name: Build AppImage
         env:
