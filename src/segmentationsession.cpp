@@ -402,11 +402,22 @@ class OnnxSegmentationSession : public SegmentationSession {
 public:
     OnnxSegmentationSession(const QString &modelPath, Ort::Env &env, int fallbackInputSize, bool allowGpu)
         : inputSize(fallbackInputSize),
-          session(env, modelPath.toStdString().c_str(), makeSessionOptions(allowGpu)) {
+          session(createSession(modelPath, env, allowGpu)) {
         readInputSize(fallbackInputSize);
     }
 
 protected:
+    static Ort::Session createSession(const QString &modelPath, Ort::Env &env, bool allowGpu) {
+        Ort::SessionOptions options = makeSessionOptions(allowGpu);
+#ifdef _WIN32
+        const std::wstring wideModelPath = modelPath.toStdWString();
+        return Ort::Session(env, wideModelPath.c_str(), options);
+#else
+        const QByteArray utf8ModelPath = modelPath.toUtf8();
+        return Ort::Session(env, utf8ModelPath.constData(), options);
+#endif
+    }
+
     void readInputSize(int fallbackInputSize) {
         Ort::TypeInfo inputTypeInfo = session.GetInputTypeInfo(0);
         auto inputTensorInfo = inputTypeInfo.GetTensorTypeAndShapeInfo();

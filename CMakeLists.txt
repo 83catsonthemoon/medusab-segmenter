@@ -78,6 +78,10 @@ target_include_directories(medusab-segmenter PRIVATE
 )
 target_link_libraries(medusab-segmenter PRIVATE opencv_core opencv_imgproc)
 
+set_target_properties(opencv_core opencv_imgproc PROPERTIES
+    INSTALL_RPATH "$ORIGIN"
+)
+
 set_target_properties(medusab-segmenter PROPERTIES
     WIN32_EXECUTABLE ON
     INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}"
