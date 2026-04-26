@@ -146,7 +146,7 @@ jobs:
           sudo apt-get install -y imagemagick
 
           icon_file="${appdir}/usr/share/icons/hicolor/512x512/apps/medusab-segmenter.png"
-          magick "${icon_file}" -resize 512x512! "${icon_file}"
+          convert "${icon_file}" -resize 512x512! "${icon_file}"
           identify "${icon_file}"
 
           qmake_path="$(command -v qmake6 || command -v qmake)"
