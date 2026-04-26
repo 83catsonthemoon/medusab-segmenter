@@ -142,6 +142,9 @@ else()
     set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
     set(CPACK_DEBIAN_PACKAGE_SECTION graphics)
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS
+        "libqt6core6t64 (>= 6.4.2), libqt6gui6t64 (>= 6.4.2), libqt6widgets6t64 (>= 6.4.2), libqt6network6t64 (>= 6.4.2)"
+    )
 endif()
 
 include(CPack)
