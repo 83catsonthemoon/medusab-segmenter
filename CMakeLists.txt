@@ -136,6 +136,10 @@ if(WIN32)
     set(CPACK_GENERATOR "ZIP;NSIS")
     set(CPACK_NSIS_DISPLAY_NAME "Medusab Segmenter")
     set(CPACK_NSIS_PACKAGE_NAME "Medusab Segmenter")
+    set(CPACK_NSIS_CREATE_DESKTOP_LINKS "medusab-segmenter")
+    set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
+      Delete '$DESKTOP\\\\Medusab Segmenter.lnk'
+    ")
 else()
     set(CPACK_GENERATOR "TGZ;DEB")
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "83catsonthemoon")
