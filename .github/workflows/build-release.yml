@@ -191,19 +191,19 @@ jobs:
         shell: pwsh
         run: choco install nsis -y
 
-      - name: Download ONNX Runtime
+      - name: Download Windows ML package
         shell: pwsh
         run: |
-          $archive = Join-Path $env:RUNNER_TEMP "onnxruntime.zip"
+          $version = "1.8.2141"
+          $archive = Join-Path $env:RUNNER_TEMP "Microsoft.WindowsAppSDK.ML.$version.nupkg"
           $root = Join-Path `
             $env:RUNNER_TEMP `
-            "onnxruntime-win-x64-gpu-$env:ORT_VERSION"
-          $url = "https://github.com/microsoft/onnxruntime/releases/download/" +
-            "v$($env:ORT_VERSION)/" +
-            "onnxruntime-win-x64-gpu_cuda13-$($env:ORT_VERSION).zip"
+            "Microsoft.WindowsAppSDK.ML.$version"
+          $url = "https://www.nuget.org/api/v2/package/" +
+            "Microsoft.WindowsAppSDK.ML/$version"
           Invoke-WebRequest -Uri $url -OutFile $archive
           Expand-Archive -Path $archive -DestinationPath $env:RUNNER_TEMP -Force
-          "ONNXRUNTIME_ROOT=$root" |
+          "WINDOWS_ML_DIR=$(Join-Path $root 'build/cmake')" |
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Configure
@@ -212,7 +212,7 @@ jobs:
           cmake -S . -B build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DMEDUSAB_SEGMENTER_VERSION="${env:APP_VERSION}" `
-            -DONNXRUNTIME_ROOT="${env:ONNXRUNTIME_ROOT}"
+            -DWINDOWS_ML_DIR="${env:WINDOWS_ML_DIR}"
 
       - name: Build
         run: cmake --build build --parallel

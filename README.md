@@ -36,17 +36,10 @@ sudo apt install libcudnn9-cuda-12
 sudo ldconfig
 ```
 
-For Windows, go download the dev kit as linked in the ONNX documentation.
-
-The Windows GPU zip alone is not enough for CUDA execution. ONNX Runtime's
-CUDA EP also needs matching CUDA and cuDNN runtime DLLs available at runtime.
-If `Ort::GetAvailableProviders()` only shows `CPUExecutionProvider` on
-Windows, the usual cause is missing or mismatched CUDA/cuDNN/MSVC runtime DLLs
-rather than a problem in the model itself.
-
-If CUDA is unavailable on Windows, this app will try DirectML next. ONNX
-Runtime's DirectML EP runs on adapter `0` by default, which is often the
-integrated GPU on mixed-GPU laptops and desktops.
+For Windows, this project now uses the Windows ML package instead of the
+standalone ONNX Runtime GPU zip. That gives the app the ONNX Runtime shipped
+with Windows ML plus the included DirectML provider, which is a better fit for
+Windows deployment than manually carrying CUDA runtime dependencies.
 
 ### Build
 
@@ -59,18 +52,13 @@ cmake --build build
 
 #### Windows 
 
-MinGW
-```ps
-cmake -S . -B build -G "MinGW Makefiles" `
-   -DCMAKE_C_COMPILER=gcc `
-   -DCMAKE_CXX_COMPILER=g++ `
-   -DCMAKE_PREFIX_PATH="C:/Qt/6.4.2/mingw_64" `
-   -DONNXRUNTIME_ROOT="onnxruntime-win-x64-gpu-1.25.0"
-```
+Windows ML currently assumes a modern MSVC/Windows App SDK toolchain.
 
-Maybe MSVC
 ```ps
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
   -DCMAKE_PREFIX_PATH="C:/Qt/6.4.2/msvc2019_64" `
-  -DONNXRUNTIME_ROOT="onnxruntime-win-x64-gpu-1.25.0"
+  -DWINDOWS_ML_DIR="C:/packages/Microsoft.WindowsAppSDK.ML/build/cmake"
 ```
+
+If both Qt and Windows ML need to come from `CMAKE_PREFIX_PATH`, pass them as a
+semicolon-separated list.

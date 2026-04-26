@@ -24,7 +24,7 @@ MainWindow::MainWindow()
       inputLabel(nullptr),
       outputLabel(nullptr),
       outputStatusLabel(nullptr),
-      env(ORT_LOGGING_LEVEL_WARNING, "medusab-segmenter"),
+      env(createOrtEnv()),
       segmentationSession(nullptr),
       chunkRefinementSession(nullptr),
       currentModelKind(ModelKind::U2Net) {

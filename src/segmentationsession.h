@@ -3,10 +3,10 @@
 #include <QImage>
 #include <QString>
 
-#include <onnxruntime_cxx_api.h>
-
 #include <functional>
 #include <memory>
+
+#include "src/ortcompat.h"
 
 enum class ModelKind {
     U2Net,
@@ -32,6 +32,10 @@ public:
         const std::function<void(int, int)> &progressCallback
     ) = 0;
 };
+
+Ort::Env createOrtEnv(
+    const std::function<void(const QString &)> &statusCallback = {}
+);
 
 std::unique_ptr<SegmentationSession> createSegmentationSession(
     ModelKind kind,
