@@ -128,10 +128,13 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
           appdir="${GITHUB_WORKSPACE}/AppDir"
+          lib_dir="${appdir}/usr/lib"
           icon_file="${appdir}/usr/share/icons/hicolor/512x512/apps/"
           icon_file+="medusab-segmenter.png"
           rm -rf "${appdir}"
           cmake --install build --prefix "${appdir}/usr"
+          rm -f "${lib_dir}/libonnxruntime_providers_cuda.so"*
+          rm -f "${lib_dir}/libonnxruntime_providers_tensorrt.so"*
           convert "${icon_file}" -resize 512x512! "${icon_file}"
           qmake_path="$(command -v qmake6 || command -v qmake)"
           desktop_dir="${appdir}/usr/share/applications"
@@ -141,8 +144,6 @@ jobs:
             --appdir "${appdir}" \
             --desktop-file "${desktop_file}" \
             --icon-file "${icon_file}" \
-            --exclude-library "libonnxruntime_providers_cuda.so*" \
-            --exclude-library "libonnxruntime_providers_tensorrt.so*" \
             --plugin qt \
             --output appimage
           mkdir -p dist/linux
