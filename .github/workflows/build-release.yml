@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -164,7 +164,7 @@ jobs:
           mkdir -p dist/linux
           mv ./*.AppImage dist/linux/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: medusab-segmenter-linux
           path: dist/linux/*
@@ -179,7 +179,7 @@ jobs:
     runs-on: windows-2022
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -243,7 +243,7 @@ jobs:
           cpack -C Release -G ZIP -B "$env:GITHUB_WORKSPACE/dist/windows"
           cpack -C Release -G NSIS -B "$env:GITHUB_WORKSPACE/dist/windows"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: medusab-segmenter-windows
           path: dist/windows/*
