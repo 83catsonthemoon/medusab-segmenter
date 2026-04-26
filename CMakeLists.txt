@@ -5,7 +5,7 @@ project(medusab-segmenter LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 
 set(BUILD_LIST core,imgproc CACHE STRING "OpenCV modules to build" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "Disable OpenCV tests" FORCE)
@@ -47,6 +47,14 @@ else()
     )
 endif()
 
+if (MSVC)
+    # warning level 4
+    add_compile_options(/W4 /Qpar /GF /favor:blend /arch:AVX2)
+else()
+    # additional warnings
+    add_compile_options(-Wall -Wextra -Wpedantic -O3 -flto -mavx2 -mfma)
+endif()
+
 qt_standard_project_setup()
 
 qt_add_executable(medusab-segmenter
@@ -57,7 +65,7 @@ qt_add_executable(medusab-segmenter
     src/segmentationsession.h
 )
 
-target_link_libraries(medusab-segmenter PRIVATE Qt6::Widgets onnxruntime)
+target_link_libraries(medusab-segmenter PRIVATE Qt6::Widgets Qt6::Network onnxruntime)
 target_include_directories(medusab-segmenter PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/opencv/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/opencv/modules/core/include"
