@@ -61,10 +61,10 @@ jobs:
           archive_path="${RUNNER_TEMP}/onnxruntime.tgz"
           archive_url="https://github.com/microsoft/onnxruntime/releases/"
           archive_url+="download/v${ORT_VERSION}/"
-          archive_url+="onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz"
+          archive_url+="onnxruntime-linux-x64-${ORT_VERSION}.tgz"
           curl -L -o "${archive_path}" "${archive_url}"
           tar -xzf "${archive_path}" -C "${RUNNER_TEMP}"
-          ort_root="${RUNNER_TEMP}/onnxruntime-linux-x64-gpu-${ORT_VERSION}"
+          ort_root="${RUNNER_TEMP}/onnxruntime-linux-x64-${ORT_VERSION}"
           echo "ONNXRUNTIME_ROOT=${ort_root}" >> "${GITHUB_ENV}"
 
       - name: Configure
@@ -195,10 +195,10 @@ jobs:
           $archive = Join-Path $env:RUNNER_TEMP "onnxruntime.zip"
           $root = Join-Path `
             $env:RUNNER_TEMP `
-            "onnxruntime-win-x64-directml-$env:ORT_VERSION"
+            "onnxruntime-win-x64-gpu-$env:ORT_VERSION"
           $url = "https://github.com/microsoft/onnxruntime/releases/download/" +
             "v$($env:ORT_VERSION)/" +
-            "onnxruntime-win-x64-directml-$($env:ORT_VERSION).zip"
+            "onnxruntime-win-x64-gpu-$($env:ORT_VERSION).zip"
           Invoke-WebRequest -Uri $url -OutFile $archive
           Expand-Archive -Path $archive -DestinationPath $env:RUNNER_TEMP -Force
           "ONNXRUNTIME_ROOT=$root" |
