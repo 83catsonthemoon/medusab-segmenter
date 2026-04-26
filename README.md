@@ -1,5 +1,11 @@
 # medusab-segmenter
 
+Because skin segmentation is laborious.
+
+Grab the latest release from the [releases](https://github.com/83catsonthemoon/medusab-segmenter/releases) tab
+
+![demo](./assets/demo.png)
+
 ## Development Requirements
 
 ### Requirements
