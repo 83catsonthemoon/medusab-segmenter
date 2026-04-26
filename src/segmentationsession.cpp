@@ -28,11 +28,6 @@
 
 #include <opencv2/imgproc.hpp>
 
-#ifdef _WIN32
-#include <winrt/Microsoft.Windows.AI.MachineLearning.h>
-#include <winrt/base.h>
-#endif
-
 namespace {
 
 struct TileBox {
@@ -234,43 +229,6 @@ Ort::SessionOptions makeSessionOptions(bool allowGpu) {
   qDebug() << "Using ONNX Runtime provider: CPUExecutionProvider";
   return opts;
 }
-
-#ifdef _WIN32
-void registerWindowsMlProviders(
-    Ort::Env &env, const std::function<void(const QString &)> &statusCallback) {
-  Q_UNUSED(env);
-
-  try {
-    winrt::init_apartment();
-  } catch (const winrt::hresult_error &err) {
-    qWarning() << "Failed to initialize WinRT apartment for Windows ML:"
-               << QString::fromWCharArray(err.message().c_str());
-  }
-
-  try {
-    if (statusCallback)
-      statusCallback(QString("Registering Windows ML providers..."));
-
-    auto catalog =
-        winrt::Microsoft::Windows::AI::MachineLearning::ExecutionProviderCatalog::
-            GetDefault();
-    catalog.RegisterCertifiedAsync().get();
-
-    qDebug() << "Registered Windows ML certified execution providers";
-    std::vector<std::string> providers = Ort::GetAvailableProviders();
-    std::set<std::string> sortedProviders(providers.begin(), providers.end());
-    qDebug() << "Windows ML registered ONNX Runtime providers:"
-             << QString::fromStdString(joinProviders(sortedProviders));
-  } catch (const winrt::hresult_error &err) {
-    qWarning() << "Failed to register Windows ML providers:"
-               << QString::fromWCharArray(err.message().c_str());
-  } catch (const Ort::Exception &err) {
-    qWarning() << "Windows ML provider registration changed ONNX Runtime state,"
-                  " but provider enumeration failed:"
-               << err.what();
-  }
-}
-#endif
 
 cv::Mat imageToRgbMat(const QImage &img, QImage &rgbStorage) {
   rgbStorage = img.convertToFormat(QImage::Format_RGB888);
@@ -750,7 +708,8 @@ Ort::Env createOrtEnv(
     const std::function<void(const QString &)> &statusCallback) {
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "medusab-segmenter");
 #ifdef _WIN32
-  registerWindowsMlProviders(env, statusCallback);
+  if (statusCallback)
+    statusCallback(QString("Loading Windows ML runtime..."));
 #else
   Q_UNUSED(statusCallback);
 #endif
