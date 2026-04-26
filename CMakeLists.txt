@@ -108,11 +108,6 @@ if(WIN32)
     install(IMPORTED_RUNTIME_ARTIFACTS WindowsML::Api WindowsML::OnnxRuntime
         DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
-    if(TARGET WindowsML::DirectML)
-        install(IMPORTED_RUNTIME_ARTIFACTS WindowsML::DirectML
-            DESTINATION ${CMAKE_INSTALL_BINDIR}
-        )
-    endif()
 else()
     file(GLOB ONNXRUNTIME_RUNTIME_FILES "${ONNXRUNTIME_ROOT}/lib/libonnxruntime*.so*")
     install(FILES ${ONNXRUNTIME_RUNTIME_FILES} DESTINATION ${CMAKE_INSTALL_LIBDIR})
@@ -133,7 +128,7 @@ endif()
 if(WIN32)
     qt_generate_deploy_app_script(
         TARGET medusab-segmenter
-        FILENAME_VARIABLE qt_deploy_script
+        OUTPUT_SCRIPT qt_deploy_script
         NO_UNSUPPORTED_PLATFORM_ERROR
     )
     install(SCRIPT ${qt_deploy_script})
