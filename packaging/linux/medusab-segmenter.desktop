@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Medusab Segmenter
+Comment=Desktop image segmentation app powered by ONNX Runtime
+Exec=medusab-segmenter
+Icon=medusab-segmenter
+Categories=Graphics;
+Terminal=false

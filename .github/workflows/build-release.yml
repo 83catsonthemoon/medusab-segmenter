@@ -1,0 +1,184 @@
+name: Build And Publish
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  QT_VERSION: 6.7.3
+  ORT_VERSION: 1.25.0
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set build version
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> "${GITHUB_ENV}"
+          else
+            echo "APP_VERSION=0.0.0-ci.${GITHUB_RUN_NUMBER}" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            curl \
+            file \
+            libfontconfig1-dev \
+            libfuse2 \
+            libgl1-mesa-dev \
+            libxkbcommon-x11-dev \
+            ninja-build \
+            patchelf
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: linux_gcc_64
+
+      - name: Download ONNX Runtime
+        run: |
+          curl -L \
+            -o "${RUNNER_TEMP}/onnxruntime.tgz" \
+            "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz"
+          tar -xzf "${RUNNER_TEMP}/onnxruntime.tgz" -C "${RUNNER_TEMP}"
+          echo "ONNXRUNTIME_ROOT=${RUNNER_TEMP}/onnxruntime-linux-x64-gpu-${ORT_VERSION}" >> "${GITHUB_ENV}"
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DMEDUSAB_SEGMENTER_VERSION=${APP_VERSION}
+          -DONNXRUNTIME_ROOT=${ONNXRUNTIME_ROOT}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Package TGZ and DEB
+        working-directory: build
+        run: |
+          cpack -G TGZ -B "${GITHUB_WORKSPACE}/dist/linux"
+          cpack -G DEB -B "${GITHUB_WORKSPACE}/dist/linux"
+
+      - name: Download linuxdeploy
+        run: |
+          mkdir -p "${RUNNER_TEMP}/linuxdeploy"
+          curl -L \
+            -o "${RUNNER_TEMP}/linuxdeploy/linuxdeploy-x86_64.AppImage" \
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+          curl -L \
+            -o "${RUNNER_TEMP}/linuxdeploy/linuxdeploy-plugin-qt-x86_64.AppImage" \
+            "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+          chmod +x "${RUNNER_TEMP}/linuxdeploy/"*.AppImage
+
+      - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: |
+          rm -rf AppDir
+          cmake --install build --prefix AppDir/usr
+          export PATH="${RUNNER_TEMP}/linuxdeploy:${PATH}"
+          export QMAKE="$(command -v qmake6 || command -v qmake)"
+          "${RUNNER_TEMP}/linuxdeploy/linuxdeploy-x86_64.AppImage" \
+            --appdir AppDir \
+            --desktop-file AppDir/usr/share/applications/medusab-segmenter.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/512x512/apps/medusab-segmenter.png \
+            --plugin qt \
+            --output appimage
+          mkdir -p dist/linux
+          mv ./*.AppImage dist/linux/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: medusab-segmenter-linux
+          path: dist/linux/*
+
+      - name: Publish release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/linux/*
+
+  windows:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set build version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq "tag") {
+            "APP_VERSION=$($env:GITHUB_REF_NAME.TrimStart('v'))" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } else {
+            "APP_VERSION=0.0.0-ci.$env:GITHUB_RUN_NUMBER" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install packaging tools
+        shell: pwsh
+        run: choco install nsis -y
+
+      - name: Download ONNX Runtime
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "onnxruntime.zip"
+          Invoke-WebRequest `
+            -Uri "https://github.com/microsoft/onnxruntime/releases/download/v${env:ORT_VERSION}/onnxruntime-win-x64-directml-${env:ORT_VERSION}.zip" `
+            -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $env:RUNNER_TEMP -Force
+          "ONNXRUNTIME_ROOT=$(Join-Path $env:RUNNER_TEMP "onnxruntime-win-x64-directml-${env:ORT_VERSION}")" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DMEDUSAB_SEGMENTER_VERSION=${{ env.APP_VERSION }}
+          -DONNXRUNTIME_ROOT=${{ env.ONNXRUNTIME_ROOT }}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Package ZIP and NSIS installer
+        working-directory: build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "$env:GITHUB_WORKSPACE/dist/windows" -Force | Out-Null
+          cpack -C Release -G ZIP -B "$env:GITHUB_WORKSPACE/dist/windows"
+          cpack -C Release -G NSIS -B "$env:GITHUB_WORKSPACE/dist/windows"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: medusab-segmenter-windows
+          path: dist/windows/*
+
+      - name: Publish release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/windows/*

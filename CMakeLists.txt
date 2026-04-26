@@ -1,9 +1,13 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(medusab-segmenter LANGUAGES CXX)
+set(MEDUSAB_SEGMENTER_VERSION "0.0.0" CACHE STRING "Application version")
+
+project(medusab-segmenter VERSION ${MEDUSAB_SEGMENTER_VERSION} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+include(GNUInstallDirs)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 
@@ -74,4 +78,63 @@ target_include_directories(medusab-segmenter PRIVATE
 )
 target_link_libraries(medusab-segmenter PRIVATE opencv_core opencv_imgproc)
 
-set_target_properties(medusab-segmenter PROPERTIES WIN32_EXECUTABLE ON)
+set_target_properties(medusab-segmenter PROPERTIES
+    WIN32_EXECUTABLE ON
+    INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}"
+)
+
+install(TARGETS medusab-segmenter opencv_core opencv_imgproc
+    BUNDLE DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+if(WIN32)
+    file(GLOB ONNXRUNTIME_RUNTIME_FILES "${ONNXRUNTIME_ROOT}/lib/*.dll")
+    install(FILES ${ONNXRUNTIME_RUNTIME_FILES} DESTINATION ${CMAKE_INSTALL_BINDIR})
+else()
+    file(GLOB ONNXRUNTIME_RUNTIME_FILES "${ONNXRUNTIME_ROOT}/lib/libonnxruntime*.so*")
+    install(FILES ${ONNXRUNTIME_RUNTIME_FILES} DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
+
+install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/medusab-segmenter)
+
+if(UNIX AND NOT APPLE)
+    install(FILES packaging/linux/medusab-segmenter.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
+    )
+    install(FILES assets/icon.png
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/512x512/apps
+        RENAME medusab-segmenter.png
+    )
+endif()
+
+qt_generate_deploy_app_script(
+    TARGET medusab-segmenter
+    FILENAME_VARIABLE qt_deploy_script
+    NO_UNSUPPORTED_PLATFORM_ERROR
+)
+install(SCRIPT ${qt_deploy_script})
+
+set(CPACK_PACKAGE_NAME "medusab-segmenter")
+set(CPACK_PACKAGE_VENDOR "83catsonthemoon")
+set(CPACK_PACKAGE_CONTACT "83catsonthemoon@users.noreply.github.com")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Desktop image segmentation app powered by Qt and ONNX Runtime")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "Medusab Segmenter")
+set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+
+if(WIN32)
+    set(CPACK_GENERATOR "ZIP;NSIS")
+    set(CPACK_NSIS_DISPLAY_NAME "Medusab Segmenter")
+    set(CPACK_NSIS_PACKAGE_NAME "Medusab Segmenter")
+else()
+    set(CPACK_GENERATOR "TGZ;DEB")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "83catsonthemoon")
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+    set(CPACK_DEBIAN_PACKAGE_SECTION graphics)
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+endif()
+
+include(CPack)
