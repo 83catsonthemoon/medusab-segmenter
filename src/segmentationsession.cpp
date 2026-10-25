@@ -182,7 +182,9 @@ bool appendDirectMLProvider(Ort::SessionOptions *opts) {
   }
 }
 
-Ort::SessionOptions makeSessionOptions(bool allowGpu) {
+Ort::SessionOptions makeSessionOptions(bool allowGpu, bool *gpuActive = nullptr) {
+  if (gpuActive)
+    *gpuActive = false;
   Ort::SessionOptions opts;
   opts.SetIntraOpNumThreads(4);
   opts.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
@@ -205,6 +207,8 @@ Ort::SessionOptions makeSessionOptions(bool allowGpu) {
     try {
       OrtCUDAProviderOptions cudaOptions{};
       opts.AppendExecutionProvider_CUDA(cudaOptions);
+      if (gpuActive)
+        *gpuActive = true;
       qDebug() << "Using ONNX Runtime provider: CUDAExecutionProvider";
       return opts;
     } catch (const Ort::Exception &err) {
@@ -215,6 +219,8 @@ Ort::SessionOptions makeSessionOptions(bool allowGpu) {
   if (hasProvider(availableSet, "DmlExecutionProvider") ||
       hasProvider(availableSet, "DML")) {
     if (appendDirectMLProvider(&opts)) {
+      if (gpuActive)
+        *gpuActive = true;
       qDebug() << "Using ONNX Runtime provider: DmlExecutionProvider";
       return opts;
     }
@@ -492,26 +498,64 @@ cv::Mat outputToMask(Ort::Value &output, int fallbackSize, bool normalize) {
   return mask;
 }
 
+bool isMemoryAllocationError(const Ort::Exception &error) {
+  const QString message = QString::fromUtf8(error.what()).toLower();
+  return message.contains("failed to allocate memory") ||
+         message.contains("out of memory") ||
+         message.contains("out_of_memory") ||
+         message.contains("cudaerrormemoryallocation") ||
+         message.contains("cudnn_status_alloc_failed") ||
+         message.contains("e_outofmemory") ||
+         message.contains("0x8007000e");
+}
+
+template <typename Operation, typename Fallback>
+auto retryOnGpuMemoryError(bool gpuActive, Operation operation,
+                          Fallback fallback) {
+  try {
+    return operation();
+  } catch (const Ort::Exception &error) {
+    if (!gpuActive || !isMemoryAllocationError(error))
+      throw;
+    qWarning() << "GPU memory allocation failed; falling back to CPU:"
+               << error.what();
+    fallback();
+  }
+  // CPU errors propagate; never retry indefinitely.
+  return operation();
+}
+
 class OnnxSegmentationSession : public SegmentationSession {
 public:
   OnnxSegmentationSession(const QString &modelPath, Ort::Env &env,
-                          int fallbackInputSize, bool allowGpu)
-      : inputSize(fallbackInputSize),
-        session(createSession(modelPath, env, allowGpu)) {
+                          int fallbackInputSize, bool allowGpu,
+                          std::function<void(const QString &)> statusCallback = {})
+      : inputSize(fallbackInputSize), modelPath(modelPath), env(env),
+        statusCallback(std::move(statusCallback)),
+        session(createSession(allowGpu)) {
     readInputSize(fallbackInputSize);
   }
 
 protected:
-  static Ort::Session createSession(const QString &modelPath, Ort::Env &env,
-                                    bool allowGpu) {
-    Ort::SessionOptions options = makeSessionOptions(allowGpu);
+  void reportCpuFallback() {
+    if (statusCallback)
+      statusCallback("GPU ran out of memory. Falling back to CPU...");
+  }
+
+  Ort::Session createSession(bool allowGpu) {
+    Ort::SessionOptions options = makeSessionOptions(allowGpu, &gpuActive);
+    return retryOnGpuMemoryError(gpuActive, [&]() {
 #ifdef _WIN32
-    const std::wstring wideModelPath = modelPath.toStdWString();
-    return Ort::Session(env, wideModelPath.c_str(), options);
+      const std::wstring wideModelPath = modelPath.toStdWString();
+      return Ort::Session(env, wideModelPath.c_str(), options);
 #else
-    const QByteArray utf8ModelPath = modelPath.toUtf8();
-    return Ort::Session(env, utf8ModelPath.constData(), options);
+      const QByteArray utf8ModelPath = modelPath.toUtf8();
+      return Ort::Session(env, utf8ModelPath.constData(), options);
 #endif
+    }, [&]() {
+      reportCpuFallback();
+      options = makeSessionOptions(false, &gpuActive);
+    });
   }
 
   void readInputSize(int fallbackInputSize) {
@@ -529,6 +573,18 @@ protected:
 
   Ort::Value run(const cv::Mat &inputMat,
                  std::vector<float> &inputTensorValues) {
+    return retryOnGpuMemoryError(gpuActive,
+        [&]() { return runOnce(inputMat, inputTensorValues); },
+        [&]() {
+          // Release GPU arenas before creating the CPU session for this model.
+          session = Ort::Session{nullptr};
+          reportCpuFallback();
+          session = createSession(false);
+        });
+  }
+
+  Ort::Value runOnce(const cv::Mat &inputMat,
+                    std::vector<float> &inputTensorValues) {
     inputTensorValues = matToNchwFloat(inputMat);
 
     std::array<int64_t, 4> shape{1, inputMat.channels(), inputMat.rows,
@@ -559,14 +615,20 @@ protected:
   }
 
   int inputSize;
+  QString modelPath;
+  Ort::Env &env;
+  std::function<void(const QString &)> statusCallback;
+  bool gpuActive = false;
   Ort::Session session;
 };
 
 class U2NetSession final : public OnnxSegmentationSession {
 public:
   U2NetSession(const QString &modelPath, Ort::Env &env, int fallbackInputSize,
-               QString name)
-      : OnnxSegmentationSession(modelPath, env, fallbackInputSize, true),
+               QString name,
+               std::function<void(const QString &)> statusCallback = {})
+      : OnnxSegmentationSession(modelPath, env, fallbackInputSize, true,
+                                std::move(statusCallback)),
         modelName(std::move(name)) {}
 
   QString displayName() const override { return modelName; }
@@ -594,8 +656,10 @@ private:
 class BiRefNetSession final : public OnnxSegmentationSession {
 public:
   explicit BiRefNetSession(const QString &modelPath, Ort::Env &env,
-                           bool allowGpu)
-      : OnnxSegmentationSession(modelPath, env, 1440, allowGpu) {}
+                           bool allowGpu,
+                           std::function<void(const QString &)> statusCallback = {})
+      : OnnxSegmentationSession(modelPath, env, 1440, allowGpu,
+                                std::move(statusCallback)) {}
 
   QString displayName() const override { return "BiRefNet"; }
 
@@ -617,10 +681,100 @@ public:
   }
 };
 
+bool isProviderCompatibilityError(const Ort::Exception &error) {
+  // Memory pressure is handled by retrying the same checkpoint on CPU.
+  if (isMemoryAllocationError(error))
+    return false;
+  if (error.GetOrtErrorCode() == ORT_EP_FAIL ||
+      error.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED)
+    return true;
+
+  // Some EPs report compilation/unsupported-op errors as generic runtime errors.
+  // Do not treat unrelated runtime, download, or integrity failures as EP errors.
+  if (error.GetOrtErrorCode() != ORT_FAIL &&
+      error.GetOrtErrorCode() != ORT_RUNTIME_EXCEPTION &&
+      error.GetOrtErrorCode() != ORT_ENGINE_ERROR)
+    return false;
+  const QString message = QString::fromUtf8(error.what()).toLower();
+  return message.contains("execution provider") ||
+         message.contains("executionprovider") ||
+         message.contains("openvino") || message.contains("directml") ||
+         message.contains("dml") || message.contains("cuda") ||
+         message.contains("tensorrt");
+}
+
+class CompatibleBiRefNetSession final : public SegmentationSession {
+public:
+  using Loader = std::function<std::unique_ptr<SegmentationSession>(bool)>;
+
+  CompatibleBiRefNetSession(
+      Ort::Env &env, bool allowGpu,
+      std::function<void(const QString &)> statusCallback)
+      : CompatibleBiRefNetSession(
+            [&env, allowGpu, statusCallback](bool legacy) {
+              const QString fileName = legacy ? "birefnet.onnx" : "birefnet_22.onnx";
+              return std::make_unique<BiRefNetSession>(
+                  ensureModelAvailable(
+                      fileName,
+                      "https://github.com/83catsonthemoon/medusab-segmenter/releases/"
+                      "download/v0.0.0/" + fileName,
+                      legacy
+                          ? "9f765b0372222b0ea2dcd60a013e8a2e77a905f1ff2f65c3ccdc24c3a1202251"
+                          : "35105318e23cf4d1985ed3454a5580f44d5362070e0794db73056f402475f8a4",
+                      statusCallback),
+                  env, allowGpu, statusCallback);
+            }, statusCallback) {}
+
+  CompatibleBiRefNetSession(Loader loader,
+                           std::function<void(const QString &)> statusCallback)
+      : load(std::move(loader)), statusCallback(std::move(statusCallback)) {
+    try {
+      activeSession = load(false);
+    } catch (const Ort::Exception &error) {
+      fallback(error);
+    }
+  }
+
+  QString displayName() const override { return "BiRefNet"; }
+
+  QImage predictMask(const QImage &img) override {
+    if (!activeSession)
+      activeSession = load(usingLegacy);
+    try {
+      return activeSession->predictMask(img);
+    } catch (const Ort::Exception &error) {
+      fallback(error);
+    }
+    return activeSession->predictMask(img);
+  }
+
+private:
+  void fallback(const Ort::Exception &error) {
+    if (usingLegacy || !isProviderCompatibilityError(error))
+      throw error;
+    qWarning() << "BiRefNet opset 22 provider error; using legacy checkpoint:"
+               << error.what();
+    // Release the failed session before allocating another large model.
+    activeSession.reset();
+    usingLegacy = true;
+    if (statusCallback)
+      statusCallback("BiRefNet provider error; loading compatibility checkpoint...");
+    activeSession = load(true);
+  }
+
+  Loader load;
+  std::function<void(const QString &)> statusCallback;
+  bool usingLegacy = false;
+  std::unique_ptr<SegmentationSession> activeSession;
+};
+
 class U2NetPChunkRefinementSession final : public ChunkRefinementSession {
 public:
-  explicit U2NetPChunkRefinementSession(const QString &modelPath, Ort::Env &env)
-      : tileSession(modelPath, env, ChunkTileSize, "U2NetP Chunks") {}
+  explicit U2NetPChunkRefinementSession(
+      const QString &modelPath, Ort::Env &env,
+      std::function<void(const QString &)> statusCallback)
+      : tileSession(modelPath, env, ChunkTileSize, "U2NetP Chunks",
+                    std::move(statusCallback)) {}
 
   QImage
   refineMask(const QImage &img, const QImage &baseMask,
@@ -728,16 +882,10 @@ std::unique_ptr<SegmentationSession> createSegmentationSession(
             "download/v0.0.0/u2net.onnx",
             "ac44f925c222a842d51d60f336e766621fc3593bced20a3624663dc0022c97ed",
             statusCallback),
-        env, 1024, "U2Net");
+        env, 1024, "U2Net", statusCallback);
   case ModelKind::BiRefNet:
-    return std::make_unique<BiRefNetSession>(
-        ensureModelAvailable(
-            "birefnet.onnx",
-            "https://github.com/83catsonthemoon/medusab-segmenter/releases/"
-            "download/v0.0.0/birefnet.onnx",
-            "9f765b0372222b0ea2dcd60a013e8a2e77a905f1ff2f65c3ccdc24c3a1202251",
-            statusCallback),
-        env, allowGpu);
+    return std::make_unique<CompatibleBiRefNetSession>(env, allowGpu,
+                                                      statusCallback);
   case ModelKind::U2NetPChunks:
     return std::make_unique<U2NetSession>(
         ensureModelAvailable(
@@ -746,7 +894,7 @@ std::unique_ptr<SegmentationSession> createSegmentationSession(
             "download/v0.0.0/u2netp_chunks.onnx",
             "657bdf94e7f1a66d8f0d36b645023cb06368c48b48b47f7c6502d835d5457b49",
             statusCallback),
-        env, 512, "U2NetP Chunks");
+        env, 512, "U2NetP Chunks", statusCallback);
   }
 
   throw std::invalid_argument("Unknown model kind");
@@ -761,5 +909,5 @@ std::unique_ptr<ChunkRefinementSession> createChunkRefinementSession(
           "download/v0.0.0/u2netp_chunks.onnx",
           "657bdf94e7f1a66d8f0d36b645023cb06368c48b48b47f7c6502d835d5457b49",
           statusCallback),
-      env);
+      env, statusCallback);
 }

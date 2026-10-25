@@ -83,6 +83,21 @@ target_include_directories(medusab-segmenter PRIVATE
 )
 target_link_libraries(medusab-segmenter PRIVATE opencv_core opencv_imgproc)
 
+option(MEDUSAB_BUILD_VALIDATION "Build BiRefNet regression tests and memory benchmark" OFF)
+if(MEDUSAB_BUILD_VALIDATION)
+    enable_testing()
+    add_executable(birefnet-fallback-test tools/test_birefnet_fallback.cpp)
+    target_include_directories(birefnet-fallback-test PRIVATE
+        $<TARGET_PROPERTY:medusab-segmenter,INCLUDE_DIRECTORIES>)
+    target_link_libraries(birefnet-fallback-test PRIVATE
+        $<TARGET_PROPERTY:medusab-segmenter,LINK_LIBRARIES>)
+    add_test(NAME birefnet-fallback COMMAND birefnet-fallback-test)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_executable(benchmark-birefnet-memory tools/benchmark_birefnet_memory.cpp)
+        target_link_libraries(benchmark-birefnet-memory PRIVATE onnxruntime)
+    endif()
+endif()
+
 set_target_properties(opencv_core opencv_imgproc PROPERTIES
     INSTALL_RPATH "$ORIGIN"
 )
