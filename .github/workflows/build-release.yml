@@ -20,7 +20,8 @@ env:
 
 jobs:
   linux:
-    runs-on: ubuntu-latest
+    # Keep the release ABI baseline stable when ubuntu-latest moves forward.
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v6
@@ -70,6 +71,7 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DQt6_DIR=/usr/lib/x86_64-linux-gnu/cmake/Qt6 \
             -DMEDUSAB_SEGMENTER_VERSION="${APP_VERSION}" \
             -DONNXRUNTIME_ROOT="${ONNXRUNTIME_ROOT}"
 
@@ -91,12 +93,32 @@ jobs:
           maintainer_mail="83catsonthemoon@users.noreply.github.com"
           install -d "${control_dir}"
           DESTDIR="${pkg_root}" cmake --install build --prefix /usr
+          # Scan the app and bundled core libraries. CUDA/TensorRT providers
+          # are optional plugins and must not make CUDA mandatory for CPU users.
+          deps_root="${RUNNER_TEMP}/deb-deps"
+          mkdir -p "${deps_root}/debian"
+          printf '%s\n' \
+            'Source: medusab-segmenter' \
+            '' \
+            'Package: medusab-segmenter' \
+            'Architecture: any' \
+            > "${deps_root}/debian/control"
+          depends="$(cd "${deps_root}" && dpkg-shlibdeps \
+            --ignore-missing-info -O \
+            -l"${pkg_root}/usr/lib" \
+            -e"${pkg_root}/usr/bin/medusab-segmenter" \
+            -e"${pkg_root}/usr/lib/libopencv_core.so" \
+            -e"${pkg_root}/usr/lib/libopencv_imgproc.so" \
+            -e"${pkg_root}/usr/lib/libonnxruntime.so")"
+          depends="${depends#shlibs:Depends=}"
+          test -n "${depends}"
           printf '%s\n' \
             'Package: medusab-segmenter' \
             "Version: ${APP_VERSION}" \
             'Section: graphics' \
             'Priority: optional' \
             'Architecture: amd64' \
+            "Depends: ${depends}, qt6-qpa-plugins" \
             "Maintainer: ${maintainer_name} <${maintainer_mail}>" \
             'Description: Desktop image segmentation app powered by Qt' \
             ' and ONNX Runtime' \
@@ -105,6 +127,19 @@ jobs:
           dpkg-deb -Zgzip --build --root-owner-group \
             "${pkg_root}" \
             "${deb_path}"
+
+      - name: Check DEB on clean Ubuntu 24.04
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}/dist/linux:/packages:ro" \
+            ubuntu:24.04 bash -ec '
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y /packages/*.deb
+              export QT_QPA_PLATFORM=offscreen
+              status=0
+              timeout 5s /usr/bin/medusab-segmenter || status=$?
+              test "${status}" -eq 124
+            '
 
       - name: Download linuxdeploy
         run: |
